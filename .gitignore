@@ -1,0 +1,39 @@
+# Node.js
+node_modules/
+
+# NestJS generated files
+/dist/
+/nx-env.json
+/nx-report.json
+/.cache/
+/.eslintcache
+/.next/
+/.sonar/
+
+# NestJS logs
+logs/
+
+# IDE files
+.idea/
+.vscode/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.test
+.env.production
+
+# Dependency lock files
+yarn.lock
+package-lock.json
+
+# Test coverage
+coverage/
+
+# NestJS debug logs
+debug.log
