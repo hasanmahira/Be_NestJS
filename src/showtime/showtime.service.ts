@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { ShowtimeEntity } from './entity/showtime.entity';
-import { DataSource, Repository } from 'typeorm';
-import { ShowtimeSummaryEntity } from './entity/showtimeSummary.entity';
+import { Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { ShowtimeEntity } from "./entity/showtime.entity";
+import { DataSource, Repository } from "typeorm";
+import { ShowtimeSummaryEntity } from "./entity/showtimeSummary.entity";
+import { HandlingStrategy } from "./../enums/handlingStrategy.enum"; // Adjust the path as needed
 
 @Injectable()
 export class ShowtimeService {
@@ -11,7 +12,7 @@ export class ShowtimeService {
     private showtimeEntityRepository: Repository<ShowtimeEntity>,
     @InjectRepository(ShowtimeSummaryEntity)
     private showtimeSummaryEntityRepository: Repository<ShowtimeSummaryEntity>,
-    private dataSource: DataSource,
+    private dataSource: DataSource
   ) {}
 
   private async updateShowtimeSummary() {
@@ -27,7 +28,7 @@ export class ShowtimeService {
             showtime."cinemaName",
             showtime."movieTitle",
             showtime.attributes,
-            showtime.city,
+            CASE WHEN showtime.city IS NULL OR showtime.city = '' THEN '' ELSE showtime.city END AS city,
             count(*)
         from "showtime"
         group by 1, 2, 3, 4, 5
@@ -69,7 +70,53 @@ export class ShowtimeService {
       // Consider how the application should behave in this scenario (e.g., skip, replace, or abort the operation).
       // Implement the necessary logic and provide feedback or logging for the operation outcome.
       // Ensure your solution handles such conflicts gracefully without causing data inconsistency or application failure.
+
+      const existingRecord = await this.dataSource
+        .createQueryBuilder()
+        .whereInIds(showtime.showtimeId)
+        .getOne();
+
+      if (existingRecord) {
+        const handlingStrategy: string = "replace";
+
+        switch (handlingStrategy) {
+          case HandlingStrategy.Skip:
+            console.log(
+              `Skipped insertion for duplicate showtimeId: ${existingRecord.showtimeId}`
+            );
+            return;
+
+          case "replace":
+            await this.dataSource
+              .createQueryBuilder()
+              .update(existingRecord)
+              .set(
+                {
+                  // Values to update on conflict
+                  movieTitle: showtime.movieTitle,
+                  cinemaName: showtime.cinemaName,
+                  showtimeInUTC: showtime.showtimeInUTC,
+                  bookingLink: showtime.bookingLink,
+                  attributes: showtime.attributes,
+                }
+              )
+              .execute();
+
+            console.log(
+              `Replaced existing record for showtimeId: ${showtime.showtimeId}`
+            );
+            return;
+
+          case HandlingStrategy.Abort:
+            throw new Error(
+              `Duplicate showtimeId found: ${existingRecord.showtimeId}. Aborting insertion.`
+            );
+
+          default:
+            throw new Error("Invalid handling strategy.");
+        }
+      }
+      await this.updateShowtimeSummary();
     }
-    await this.updateShowtimeSummary();
   }
 }

@@ -2,3 +2,16 @@
 #   Service Configuration: Create a 'service.yaml' file.
 #    - Determine the type of service you need (ClusterIP, NodePort, LoadBalancer) based on your cluster setup or exposure requirements.
 #    - Define the necessary specifications, including selector matchLabels and ports (targetPort, port, and possibly nodePort for NodePort service type).
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nestjs-service
+spec:
+  selector:
+    app: nestjs-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: ClusterIP

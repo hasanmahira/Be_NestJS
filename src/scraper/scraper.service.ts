@@ -1,11 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { AxiosError } from 'axios';
-import { HttpService } from '@nestjs/axios';
-import { catchError, firstValueFrom } from 'rxjs';
-import { ScraperResponseDto } from './dto/scraper-response.dto';
-import * as cheerio from 'cheerio';
-import { WebsiteData } from './interface/website-data.interface';
-import { ShowtimeService } from '../showtime/showtime.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { AxiosError } from "axios";
+import { HttpService } from "@nestjs/axios";
+import { catchError, firstValueFrom } from "rxjs";
+import { ScraperResponseDto } from "./dto/scraper-response.dto";
+import * as cheerio from "cheerio";
+import { WebsiteData } from "./interface/website-data.interface";
+import { ShowtimeService } from "../showtime/showtime.service";
+import { HandlingStrategy } from "src/enums/handlingStrategy.enum";
+const puppeteer = require("puppeteer");
 
 @Injectable()
 export class ScraperService {
@@ -13,7 +15,7 @@ export class ScraperService {
 
   constructor(
     private readonly httpService: HttpService,
-    private readonly showtimeService: ShowtimeService,
+    private readonly showtimeService: ShowtimeService
   ) {}
 
   private async fetchHtml(ur: string): Promise<string> {
@@ -22,22 +24,22 @@ export class ScraperService {
         catchError((error: AxiosError) => {
           const msg = error?.response?.data || error?.response || error;
           this.logger.error(msg);
-          throw 'An error happened!';
-        }),
-      ),
+          throw "An error happened!";
+        })
+      )
     );
     return data;
   }
 
-  private parseHtml(html: string): WebsiteData {
+  private async parseHtml(html: string, url: string): Promise<WebsiteData> {
     const $ = cheerio.load(html);
-    const title = $('title').text().trim();
-    const metaDescription = $('meta[name="description"]').attr('content') ?? '';
-    const faviconUrl = $('link[rel="shortcut icon"]').attr('href') ?? '';
+    const title = $("title").text().trim();
+    const metaDescription = $('meta[name="description"]').attr("content") ?? "";
+    const faviconUrl = $('link[rel="shortcut icon"]').attr("href") ?? "";
 
     const scriptUrls: string[] = [];
-    $('script').each((_i, el) => {
-      const src = $(el).attr('src');
+    $("script").each((_i, el) => {
+      const src = $(el).attr("src");
       if (src) {
         scriptUrls.push(src);
       }
@@ -45,15 +47,15 @@ export class ScraperService {
 
     const stylesheetUrls: string[] = [];
     $('link[rel="stylesheet"]').each((_i, el) => {
-      const href = $(el).attr('href');
+      const href = $(el).attr("href");
       if (href) {
         stylesheetUrls.push(href);
       }
     });
 
     const imageUrls: string[] = [];
-    $('img').each((_i, el) => {
-      const src = $(el).attr('src');
+    $("img").each((_i, el) => {
+      const src = $(el).attr("src");
       if (src) {
         imageUrls.push(src);
       }
@@ -62,12 +64,12 @@ export class ScraperService {
     const showtimes: ShowtimeInterface[] = [
       //Sample data
       {
-        showtimeId: '0009-170678',
-        cinemaName: 'Al Hamra Mall - Ras Al Khaimah',
-        movieTitle: 'Taylor Swift: The Eras Tour',
-        showtimeInUTC: '2023-11-03T17:30:00Z',
-        bookingLink: 'https://uae.voxcinemas.com/booking/0009-170678',
-        attributes: ['Standard'],
+        showtimeId: "0009-170678",
+        cinemaName: "Al Hamra Mall - Ras Al Khaimah",
+        movieTitle: "Taylor Swift: The Eras Tour",
+        showtimeInUTC: "2023-11-03T17:30:00Z",
+        bookingLink: "https://uae.voxcinemas.com/booking/0009-170678",
+        attributes: ["Standard"],
       },
     ];
 
@@ -80,6 +82,74 @@ export class ScraperService {
      - Ensure that the scraping logic is robust, handling potential inconsistencies in the webpage structure and providing informative error messages if scraping fails.
      - Consider efficiency and performance in your implementation, avoiding unnecessary requests or data processing operations.
      */
+
+    const browser = await puppeteer.launch({
+      headless: "new",
+      ignoreHTTPSErrors: false,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-http2'],
+      defaultViewport: null,
+      timeout: 0,
+      waitUntil: 'domcontentloaded',
+      devtools: false,
+      protocolTimeout: 1200000000,
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(html);
+    await page.setDefaultNavigationTimeout(0);
+
+    try {
+      let retryCount = 0;
+      const maxRetries = 5;
+      debugger;
+      
+      while (retryCount < maxRetries) {
+        try {
+          await Promise.all([
+            page.waitForNavigation({ waitUntil: "domcontentloaded" , timeout: 0 }),
+            page.goto(url, { waitUntil: 'load', timeout: 0 }),
+          ]); 
+          break; // If successful, exit the loop
+        } catch (error) {
+          console.error('Error during navigation:', error.message);
+          retryCount++;
+        }
+      }
+      debugger;
+  
+      // Scrape showtime data
+      const showtimes: ShowtimeInterface[] = await page.evaluate(() => {
+        const showtimeElements = document.querySelectorAll('.showtime-item');
+  
+        return Array.from(showtimeElements).map((showtimeElement) => {
+          const showtimeId = showtimeElement.getAttribute('showtimeid');
+          const cinemaName = showtimeElement.getAttribute('cinemaname');
+          const movieTitle = showtimeElement.getAttribute('title');
+          const showtimeInUTC = showtimeElement.getAttribute('showtimeinutc');
+          const bookingLink = showtimeElement.getAttribute('bookinglink');
+          const attributes = showtimeElement.getAttribute('attributes').split(',');
+          
+          return {
+            showtimeId,
+            cinemaName,
+            movieTitle,
+            showtimeInUTC,
+            bookingLink,
+            attributes,
+          };
+        });
+       
+      });
+  
+
+      console.log('Scraped Showtimes:', showtimes);
+    } catch (error) {
+      console.error('Error:', error.message);
+    } finally {
+      await browser.close();
+    }
+    debugger;
+
 
     return {
       title,
@@ -94,8 +164,8 @@ export class ScraperService {
 
   async scrape(url: string): Promise<ScraperResponseDto> {
     const html = await this.fetchHtml(url);
-    const websiteData: WebsiteData = this.parseHtml(html);
-    await this.showtimeService.addShowtimes(websiteData.showtimes);
+    const websiteData: Promise<WebsiteData> = this.parseHtml(html, url);
+    await this.showtimeService.addShowtimes((await websiteData).showtimes);
     return {
       requestUrl: url,
       responseData: websiteData,

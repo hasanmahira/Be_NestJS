@@ -1,4 +1,5 @@
-import { WebsiteData } from '../interface/website-data.interface';
+import { WebsiteData } from "../interface/website-data.interface";
+import { ApiProperty, getSchemaPath } from "@nestjs/swagger";
 
 export class ScraperResponseDto {
   // TODO: As part of this task, you are required to enhance the Swagger documentation for the 'ScraperResponseDto' class.
@@ -7,6 +8,15 @@ export class ScraperResponseDto {
   //  3. Review the overall Swagger setup for this DTO. Consider if there are any additional details or specific aspects of the data that API consumers would need to know. Your goal is to make the API's response structure and data as clear as possible for anyone reviewing the generated Swagger documentation.
   //  Please ensure your documentation is comprehensive and follows any standard best practices for API documentation.
 
+  @ApiProperty({
+    description: "The URL of the request.",
+    example: "https://api.example.com/data",
+  })
   requestUrl: string;
-  responseData: WebsiteData;
+
+  @ApiProperty({
+    description: "The response data.",
+    // type: getSchemaPath(WebsiteData),
+  })
+  responseData: Promise<WebsiteData>;
 }
