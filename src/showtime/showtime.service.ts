@@ -52,29 +52,8 @@ export class ShowtimeService {
 
   async addShowtimes(showtimes: ShowtimeInterface[]) {
     for (const showtime of showtimes) {
-      await this.dataSource
-        .createQueryBuilder()
-        .insert()
-        .into(ShowtimeEntity)
-        .values({
-          showtimeId: showtime.showtimeId,
-          movieTitle: showtime.movieTitle,
-          cinemaName: showtime.cinemaName,
-          showtimeInUTC: showtime.showtimeInUTC,
-          bookingLink: showtime.bookingLink,
-          attributes: showtime.attributes,
-        })
-        .execute();
-
-      //TODO: Implement error handling for cases where a duplicate 'showtimeId' is used during insertion.
-      // Consider how the application should behave in this scenario (e.g., skip, replace, or abort the operation).
-      // Implement the necessary logic and provide feedback or logging for the operation outcome.
-      // Ensure your solution handles such conflicts gracefully without causing data inconsistency or application failure.
-
-      const existingRecord = await this.dataSource
-        .createQueryBuilder()
-        .whereInIds(showtime.showtimeId)
-        .getOne();
+      const existingRecord = await this.dataSource.query(`
+      select * from "showtime" where "showtimeId" = '${showtime.showtimeId}'`);
 
       if (existingRecord) {
         const handlingStrategy: string = "replace";
@@ -90,16 +69,14 @@ export class ShowtimeService {
             await this.dataSource
               .createQueryBuilder()
               .update(existingRecord)
-              .set(
-                {
-                  // Values to update on conflict
-                  movieTitle: showtime.movieTitle,
-                  cinemaName: showtime.cinemaName,
-                  showtimeInUTC: showtime.showtimeInUTC,
-                  bookingLink: showtime.bookingLink,
-                  attributes: showtime.attributes,
-                }
-              )
+              .set({
+                // Values to update on conflict
+                movieTitle: showtime.movieTitle,
+                cinemaName: showtime.cinemaName,
+                showtimeInUTC: showtime.showtimeInUTC,
+                bookingLink: showtime.bookingLink,
+                attributes: showtime.attributes,
+              })
               .execute();
 
             console.log(
@@ -115,6 +92,25 @@ export class ShowtimeService {
           default:
             throw new Error("Invalid handling strategy.");
         }
+      } else {
+        await this.dataSource
+          .createQueryBuilder()
+          .insert()
+          .into(ShowtimeEntity)
+          .values({
+            showtimeId: showtime.showtimeId,
+            movieTitle: showtime.movieTitle,
+            cinemaName: showtime.cinemaName,
+            showtimeInUTC: showtime.showtimeInUTC,
+            bookingLink: showtime.bookingLink,
+            attributes: showtime.attributes,
+          })
+          .execute();
+
+        //TODO: Implement error handling for cases where a duplicate 'showtimeId' is used during insertion.
+        // Consider how the application should behave in this scenario (e.g., skip, replace, or abort the operation).
+        // Implement the necessary logic and provide feedback or logging for the operation outcome.
+        // Ensure your solution handles such conflicts gracefully without causing data inconsistency or application failure.
       }
       await this.updateShowtimeSummary();
     }

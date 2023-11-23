@@ -31,7 +31,7 @@ export class ScraperService {
     return data;
   }
 
-  private async parseHtml(html: string, url: string): Promise<WebsiteData> {
+  private async parseHtml(html: string): Promise<WebsiteData> {
     const $ = cheerio.load(html);
     const title = $("title").text().trim();
     const metaDescription = $('meta[name="description"]').attr("content") ?? "";
@@ -63,14 +63,14 @@ export class ScraperService {
 
     const showtimes: ShowtimeInterface[] = [
       //Sample data
-      {
-        showtimeId: "0009-170678",
-        cinemaName: "Al Hamra Mall - Ras Al Khaimah",
-        movieTitle: "Taylor Swift: The Eras Tour",
-        showtimeInUTC: "2023-11-03T17:30:00Z",
-        bookingLink: "https://uae.voxcinemas.com/booking/0009-170678",
-        attributes: ["Standard"],
-      },
+      // {
+      //   showtimeId: "0009-170678",
+      //   cinemaName: "Al Hamra Mall - Ras Al Khaimah",
+      //   movieTitle: "Taylor Swift: The Eras Tour",
+      //   showtimeInUTC: "2023-11-03T17:30:00Z",
+      //   bookingLink: "https://uae.voxcinemas.com/booking/0009-170678",
+      //   attributes: ["Standard"],
+      // },
     ];
 
     /*
@@ -82,6 +82,10 @@ export class ScraperService {
      - Ensure that the scraping logic is robust, handling potential inconsistencies in the webpage structure and providing informative error messages if scraping fails.
      - Consider efficiency and performance in your implementation, avoiding unnecessary requests or data processing operations.
      */
+
+
+     // This is the link that i am using to retrieve
+     //https://www.pathe.nl/bioscoop/scheveningen?date=24-11-2023 
 
     const browser = await puppeteer.launch({
       headless: "new",
@@ -96,75 +100,71 @@ export class ScraperService {
 
     const page = await browser.newPage();
     await page.setContent(html);
-    await page.setDefaultNavigationTimeout(0);
 
     try {
-      let retryCount = 0;
-      const maxRetries = 5;
-      debugger;
+      const showtimes = await page.evaluate(() => {
+        const scheduleItems = document.querySelectorAll('.schedule-simple__item');
       
-      while (retryCount < maxRetries) {
-        try {
-          await Promise.all([
-            page.waitForNavigation({ waitUntil: "domcontentloaded" , timeout: 0 }),
-            page.goto(url, { waitUntil: 'load', timeout: 0 }),
-          ]); 
-          break; // If successful, exit the loop
-        } catch (error) {
-          console.error('Error during navigation:', error.message);
-          retryCount++;
-        }
-      }
-      debugger;
-  
-      // Scrape showtime data
-      const showtimes: ShowtimeInterface[] = await page.evaluate(() => {
-        const showtimeElements = document.querySelectorAll('.showtime-item');
-  
-        return Array.from(showtimeElements).map((showtimeElement) => {
-          const showtimeId = showtimeElement.getAttribute('showtimeid');
-          const cinemaName = showtimeElement.getAttribute('cinemaname');
-          const movieTitle = showtimeElement.getAttribute('title');
-          const showtimeInUTC = showtimeElement.getAttribute('showtimeinutc');
-          const bookingLink = showtimeElement.getAttribute('bookinglink');
-          const attributes = showtimeElement.getAttribute('attributes').split(',');
-          
-          return {
-            showtimeId,
+        return Array.from(scheduleItems).map((scheduleItem) => {
+          const showtimeId = scheduleItem.getAttribute('data-movie-id');
+          const movieTitle = scheduleItem.querySelector('.schedule-simple__content a').textContent.trim();
+      
+          const showtimeInUTC = Array.from(scheduleItem.querySelectorAll('.schedule-time__start')).map((start) => {
+            const startDate = new Date();
+            const [hours, minutes] = start.textContent.trim().split(':');
+            startDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            return startDate.toISOString();
+          });
+      
+          const bookingLinks = Array.from(scheduleItem.querySelectorAll('.schedule-time')).map((timeElement, index) => {
+            const bookingLink = timeElement.getAttribute('data-href');
+            const formattedBookingLink = `https://www.pathe.nl/${bookingLink}`;
+            return formattedBookingLink;
+          });
+      
+          const cinemaName = "Pathe SCHEVENINGEN";
+          const attributes = [];
+
+          const parentalAdvisoryIcons = Array.from(scheduleItem.querySelectorAll('.js-tooltip-parental-advisory'))
+            .map((icon) => icon.getAttribute('data-tooltip'));
+          attributes.push(parentalAdvisoryIcons.toString());
+
+          const scheduleLabels = Array.from(scheduleItem.querySelectorAll('.schedule-time__label'))
+            .map((labelElement) => labelElement.textContent.trim());
+          attributes.push(scheduleLabels.toString());
+      
+          return showtimeInUTC.map((time, index) => ({
+            showtimeId: `${showtimeId}-${(index + 1).toString().padStart(3, '0')}`,
             cinemaName,
             movieTitle,
-            showtimeInUTC,
-            bookingLink,
+            showtimeInUTC: time,
+            bookingLink: bookingLinks[index],
             attributes,
-          };
-        });
-       
+          }));
+        }).reduce((acc, val) => acc.concat(val), []);
+        
       });
-  
-
-      console.log('Scraped Showtimes:', showtimes);
+           
+      return {
+        title,
+        metaDescription,
+        faviconUrl,
+        scriptUrls,
+        stylesheetUrls,
+        imageUrls,
+        showtimes,
+      };
     } catch (error) {
-      console.error('Error:', error.message);
+      console.error('Scraping error:', error);
+      return null;
     } finally {
       await browser.close();
     }
-    debugger;
-
-
-    return {
-      title,
-      metaDescription,
-      faviconUrl,
-      scriptUrls,
-      stylesheetUrls,
-      imageUrls,
-      showtimes,
-    };
   }
 
   async scrape(url: string): Promise<ScraperResponseDto> {
     const html = await this.fetchHtml(url);
-    const websiteData: Promise<WebsiteData> = this.parseHtml(html, url);
+    const websiteData: Promise<WebsiteData> = this.parseHtml(html);
     await this.showtimeService.addShowtimes((await websiteData).showtimes);
     return {
       requestUrl: url,
