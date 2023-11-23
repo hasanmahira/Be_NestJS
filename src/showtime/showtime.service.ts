@@ -52,65 +52,60 @@ export class ShowtimeService {
 
   async addShowtimes(showtimes: ShowtimeInterface[]) {
     for (const showtime of showtimes) {
-      const existingRecord = await this.dataSource.query(`
-      select * from "showtime" where "showtimeId" = '${showtime.showtimeId}'`);
-
-      if (existingRecord) {
-        const handlingStrategy: string = "replace";
-
-        switch (handlingStrategy) {
-          case HandlingStrategy.Skip:
-            console.log(
-              `Skipped insertion for duplicate showtimeId: ${existingRecord.showtimeId}`
-            );
-            return;
-
-          case "replace":
-            await this.dataSource
-              .createQueryBuilder()
-              .update(existingRecord)
-              .set({
-                // Values to update on conflict
-                movieTitle: showtime.movieTitle,
-                cinemaName: showtime.cinemaName,
-                showtimeInUTC: showtime.showtimeInUTC,
-                bookingLink: showtime.bookingLink,
-                attributes: showtime.attributes,
-              })
-              .execute();
-
-            console.log(
-              `Replaced existing record for showtimeId: ${showtime.showtimeId}`
-            );
-            return;
-
-          case HandlingStrategy.Abort:
-            throw new Error(
-              `Duplicate showtimeId found: ${existingRecord.showtimeId}. Aborting insertion.`
-            );
-
-          default:
-            throw new Error("Invalid handling strategy.");
-        }
-      } else {
+      try{
         await this.dataSource
-          .createQueryBuilder()
-          .insert()
-          .into(ShowtimeEntity)
-          .values({
-            showtimeId: showtime.showtimeId,
-            movieTitle: showtime.movieTitle,
-            cinemaName: showtime.cinemaName,
-            showtimeInUTC: showtime.showtimeInUTC,
-            bookingLink: showtime.bookingLink,
-            attributes: showtime.attributes,
-          })
-          .execute();
+        .createQueryBuilder()
+        .insert()
+        .into(ShowtimeEntity)
+        .values({
+          showtimeId: showtime.showtimeId,
+          movieTitle: showtime.movieTitle,
+          cinemaName: showtime.cinemaName,
+          showtimeInUTC: showtime.showtimeInUTC,
+          bookingLink: showtime.bookingLink,
+          attributes: showtime.attributes,
+        })
+        .execute();
+        
+      //TODO: Implement error handling for cases where a duplicate 'showtimeId' is used during insertion.
+      // Consider how the application should behave in this scenario (e.g., skip, replace, or abort the operation).
+      // Implement the necessary logic and provide feedback or logging for the operation outcome.
+      // Ensure your solution handles such conflicts gracefully without causing data inconsistency or application failure.
 
-        //TODO: Implement error handling for cases where a duplicate 'showtimeId' is used during insertion.
-        // Consider how the application should behave in this scenario (e.g., skip, replace, or abort the operation).
-        // Implement the necessary logic and provide feedback or logging for the operation outcome.
-        // Ensure your solution handles such conflicts gracefully without causing data inconsistency or application failure.
+      } catch (e) {
+        const existingRecord = await this.dataSource.query(`
+        select * from "showtime" where "showtimeId" = '${showtime.showtimeId}'`);
+  
+        if (existingRecord) {
+          const handlingStrategy: string = "replace";
+  
+          switch (handlingStrategy) {
+            case "skip":
+              console.log(
+                `Skipped insertion for duplicate showtimeId: ${existingRecord.showtimeId}`
+              );
+  
+            case "replace":
+              await this.dataSource.query(`
+              UPDATE public.showtime
+              SET "movieTitle"='${showtime.movieTitle}', 
+              "showtimeInUTC"='${showtime.showtimeInUTC}', "bookingLink"='${showtime.bookingLink}'
+              WHERE "showtimeId"='${showtime.showtimeId}' AND "cinemaName"='${showtime.cinemaName}';
+              `);
+  
+              console.log(
+                `Replaced existing record for showtimeId: ${showtime.showtimeId}`
+              );
+  
+            case "abort":
+              console.log(
+                `Duplicate showtimeId found: ${existingRecord.showtimeId}. Aborting insertion.`
+              );
+  
+            default:
+              console.log("Invalid handling strategy.");
+          }
+        }
       }
       await this.updateShowtimeSummary();
     }
